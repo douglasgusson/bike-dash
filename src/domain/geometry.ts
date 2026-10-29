@@ -1,8 +1,20 @@
-import type { TrackPoint } from './types'
+import { applyEMA, calculateHaversineDistanceMeters, mpsToKmh } from './math'
+import type { TrackPoint, Trip } from './types'
 
 const METERS_PER_DEGREE_LAT = 111_320
 
 export type LatLngTuple = [number, number]
+
+export interface TripComputedStats {
+  totalDistanceKm: number
+  movingTimeMs: number
+  totalDurationMs: number
+  averageSpeedKmh: number
+  maxSpeedKmh: number
+  elevationGainMeters: number
+  minAltitudeMeters: number | null
+  maxAltitudeMeters: number | null
+}
 
 /**
  * Checks whether a TrackPoint has valid, finite, non-(0,0) geographic coordinates.
@@ -139,6 +151,117 @@ export function processTripRouteGeometry(
     sanitizedCount: sanitized.length,
     simplifiedCount: simplified.length,
     polyline,
+  }
+}
+
+/**
+ * Computes rich post-session summary metrics from the Trip record and its ordered TrackPoints.
+ * Gracefully derives moving duration, average speed, max speed, and elevation gain for both
+ * newly recorded trips and older trips that only stored basic fields.
+ */
+export function computeTripSummaryStats(
+  trip: Trip | null,
+  rawPoints: TrackPoint[],
+): TripComputedStats {
+  const sanitized = sanitizeAndSortTrackPoints(rawPoints)
+
+  let derivedMovingTimeMs = 0
+  let derivedMaxSpeedKmh = 0
+  let smoothedSpeed = 0
+  let elevationGainMeters = 0
+  let minAltitudeMeters: number | null = null
+  let maxAltitudeMeters: number | null = null
+  let lastAcceptedAltitude: number | null = null
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const pt = sanitized[i]
+
+    if (pt.alt !== null && Number.isFinite(pt.alt)) {
+      if (minAltitudeMeters === null || pt.alt < minAltitudeMeters) {
+        minAltitudeMeters = pt.alt
+      }
+      if (maxAltitudeMeters === null || pt.alt > maxAltitudeMeters) {
+        maxAltitudeMeters = pt.alt
+      }
+      if (lastAcceptedAltitude === null) {
+        lastAcceptedAltitude = pt.alt
+      } else {
+        const deltaAlt = pt.alt - lastAcceptedAltitude
+        // 2m hysteresis deadband to avoid accumulating GPS altitude noise
+        if (deltaAlt >= 2.0) {
+          elevationGainMeters += deltaAlt
+          lastAcceptedAltitude = pt.alt
+        } else if (deltaAlt <= -2.0) {
+          lastAcceptedAltitude = pt.alt
+        }
+      }
+    }
+
+    if (i > 0) {
+      const prev = sanitized[i - 1]
+      const dtMs = pt.timestamp - prev.timestamp
+      const dtSec = dtMs / 1000
+
+      // Count active moving intervals (ignore gaps > 15s from manual pauses or stops)
+      if (dtMs > 0 && dtMs <= 15_000) {
+        derivedMovingTimeMs += dtMs
+      }
+
+      if (dtSec >= 0.5) {
+        const distMeters = calculateHaversineDistanceMeters(
+          { latitude: prev.lat, longitude: prev.lng },
+          { latitude: pt.lat, longitude: pt.lng },
+        )
+        const instantKmh = mpsToKmh(distMeters / dtSec)
+        if (instantKmh <= 125) {
+          smoothedSpeed = applyEMA(instantKmh, smoothedSpeed, 0.45)
+          if (smoothedSpeed > derivedMaxSpeedKmh) {
+            derivedMaxSpeedKmh = smoothedSpeed
+          }
+        }
+      }
+    }
+  }
+
+  const totalDistanceKm = trip?.totalDistance ?? 0
+
+  const firstTs = trip?.startTime ?? sanitized[0]?.timestamp ?? 0
+  const lastTs =
+    trip?.endTime ?? sanitized[sanitized.length - 1]?.timestamp ?? firstTs
+  const totalDurationMs = Math.max(0, lastTs - firstTs)
+
+  const movingTimeMs =
+    trip?.elapsedTimeMs && trip.elapsedTimeMs > 0
+      ? trip.elapsedTimeMs
+      : derivedMovingTimeMs > 0
+        ? derivedMovingTimeMs
+        : totalDurationMs
+
+  const movingHours = movingTimeMs / 3_600_000
+  const derivedAvgSpeedKmh =
+    movingHours > 0.0002 ? totalDistanceKm / movingHours : 0
+
+  const averageSpeedKmh =
+    trip?.averageSpeedKmh && trip.averageSpeedKmh > 0
+      ? trip.averageSpeedKmh
+      : derivedAvgSpeedKmh
+
+  const maxSpeedKmh =
+    trip?.maxSpeedKmh && trip.maxSpeedKmh > 0
+      ? Math.max(trip.maxSpeedKmh, derivedMaxSpeedKmh)
+      : derivedMaxSpeedKmh
+
+  return {
+    totalDistanceKm,
+    movingTimeMs,
+    totalDurationMs,
+    averageSpeedKmh,
+    maxSpeedKmh,
+    elevationGainMeters: Math.round(elevationGainMeters),
+    minAltitudeMeters:
+      minAltitudeMeters !== null ? Math.round(minAltitudeMeters) : null,
+    maxAltitudeMeters:
+      maxAltitudeMeters !== null ? Math.round(maxAltitudeMeters) : null,
   }
 }
 

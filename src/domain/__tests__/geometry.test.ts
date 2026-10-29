@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  computeTripSummaryStats,
   perpendicularDistanceMeters,
   processTripRouteGeometry,
   sanitizeAndSortTrackPoints,
@@ -91,6 +92,36 @@ describe('Trip Viewer Geometry & Douglas-Peucker Simplification', () => {
       [-23.59, -46.65],
       [-23.58, -46.65],
     ])
+  })
+
+  it('computes summary stats (average speed, max speed, active duration, elevation gain)', () => {
+    const t0 = 1_700_000_000_000
+    const raw: TrackPoint[] = [
+      { tripId: 't1', timestamp: t0, lat: -23.59, lng: -46.65, alt: 750, accuracy: 5 },
+      { tripId: 't1', timestamp: t0 + 10_000, lat: -23.589, lng: -46.65, alt: 755, accuracy: 5 },
+      { tripId: 't1', timestamp: t0 + 20_000, lat: -23.588, lng: -46.65, alt: 762, accuracy: 5 },
+    ]
+
+    const stats = computeTripSummaryStats(
+      {
+        id: 't1',
+        startTime: t0,
+        endTime: t0 + 25_000,
+        totalDistance: 0.22,
+        elapsedTimeMs: 20_000,
+        averageSpeedKmh: 39.6,
+        maxSpeedKmh: 41.2,
+        isFinished: true,
+      },
+      raw,
+    )
+
+    expect(stats.totalDistanceKm).toBeCloseTo(0.22, 2)
+    expect(stats.movingTimeMs).toBe(20_000)
+    expect(stats.totalDurationMs).toBe(25_000)
+    expect(stats.averageSpeedKmh).toBeCloseTo(39.6, 1)
+    expect(stats.maxSpeedKmh).toBeCloseTo(41.2, 1)
+    expect(stats.elevationGainMeters).toBe(12)
   })
 })
 

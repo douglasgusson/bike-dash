@@ -113,10 +113,20 @@ export function TripHistoryModal({
             </div>
           ) : (
             trips.map((trip) => {
-              const durationMs =
+              const totalDurationMs =
                 trip.endTime && trip.endTime > trip.startTime
                   ? trip.endTime - trip.startTime
                   : 0
+              const activeDurationMs =
+                trip.elapsedTimeMs && trip.elapsedTimeMs > 0
+                  ? trip.elapsedTimeMs
+                  : totalDurationMs
+              const avgSpeed =
+                trip.averageSpeedKmh && trip.averageSpeedKmh > 0
+                  ? trip.averageSpeedKmh
+                  : activeDurationMs > 1000
+                    ? trip.totalDistance / (activeDurationMs / 3_600_000)
+                    : 0
               const dateFormatted = new Date(trip.startTime).toLocaleString('pt-BR', {
                 day: '2-digit',
                 month: '2-digit',
@@ -137,16 +147,26 @@ export function TripHistoryModal({
                       <div className="text-xs text-neutral-400 font-bold">
                         {dateFormatted}
                       </div>
-                      <div className="flex items-baseline gap-3 mt-0.5">
+                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-0.5">
                         <span className="text-xl font-extrabold text-white tabular-nums">
                           {trip.totalDistance.toFixed(2)}{' '}
                           <span className="text-xs text-neutral-400">KM</span>
                         </span>
-                        {durationMs > 0 && (
-                          <span className="text-xs text-neutral-400 tabular-nums">
-                            • {formatDuration(durationMs)}
+                        {activeDurationMs > 0 && (
+                          <span className="text-xs text-neutral-300 tabular-nums">
+                            • {formatDuration(activeDurationMs)}
                           </span>
                         )}
+                        {avgSpeed > 0 && (
+                          <span className="text-xs text-emerald-400 font-bold tabular-nums">
+                            • {avgSpeed.toFixed(1)} km/h méd
+                          </span>
+                        )}
+                        {trip.maxSpeedKmh && trip.maxSpeedKmh > 0 ? (
+                          <span className="text-xs text-neutral-400 tabular-nums">
+                            • máx {trip.maxSpeedKmh.toFixed(1)} km/h
+                          </span>
+                        ) : null}
                       </div>
                     </div>
 

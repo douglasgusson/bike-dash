@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Download, MapPin, Palette, X } from 'lucide-react'
-import { processTripRouteGeometry, type LatLngTuple } from '../domain/geometry'
+import {
+  computeTripSummaryStats,
+  processTripRouteGeometry,
+  type LatLngTuple,
+  type TripComputedStats,
+} from '../domain/geometry'
 import { formatDuration } from '../domain/math'
 import type { Trip } from '../domain/types'
 import { exportTripToGpxDownload } from '../services/GpxExporter'
@@ -18,8 +23,8 @@ type ViewerStatus = 'LOADING' | 'READY' | 'EMPTY' | 'ERROR'
 /**
  * Post-session Trip Viewer container.
  * Fetches trip metadata and `trackpoints` via the `by-trip` index directly from IndexedDB
- * in local component state, runs the Douglas-Peucker simplification pipeline, and renders
- * the AMOLED dark-mode `<RouteMap>`.
+ * in local component state, computes session telemetry stats, runs the Douglas-Peucker
+ * simplification pipeline, and renders the `<RouteMap>`.
  */
 export function TripDetailsContainer({
   tripId,
@@ -29,6 +34,7 @@ export function TripDetailsContainer({
   const [status, setStatus] = useState<ViewerStatus>('LOADING')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [trip, setTrip] = useState<Trip | null>(null)
+  const [stats, setStats] = useState<TripComputedStats | null>(null)
   const [simplifiedCoords, setSimplifiedCoords] = useState<LatLngTuple[]>([])
   const [rawPointCount, setRawPointCount] = useState(0)
   const [simplifiedPointCount, setSimplifiedPointCount] = useState(0)
@@ -56,8 +62,13 @@ export function TripDetailsContainer({
           rawTrackPoints,
           epsilonMeters,
         )
+        const computedStats = computeTripSummaryStats(
+          tripRecord ?? null,
+          rawTrackPoints,
+        )
 
         setTrip(tripRecord ?? null)
+        setStats(computedStats)
         setRawPointCount(rawCount)
         setSimplifiedPointCount(simplifiedCount)
         setSimplifiedCoords(polyline)
@@ -87,11 +98,6 @@ export function TripDetailsContainer({
 
   if (!tripId) return null
 
-  const durationMs =
-    trip?.endTime && trip.endTime > trip.startTime
-      ? trip.endTime - trip.startTime
-      : 0
-
   const handleExport = async () => {
     setIsExporting(true)
     try {
@@ -108,7 +114,7 @@ export function TripDetailsContainer({
       aria-label="Resumo da Viagem e Mapa da Rota"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-3 sm:p-4 select-none"
     >
-      <div className="w-full max-w-3xl h-[92dvh] rounded-2xl border-2 border-neutral-700 bg-black p-4 sm:p-5 text-white shadow-2xl flex flex-col overflow-hidden font-mono">
+      <div className="w-full max-w-3xl h-[94dvh] rounded-2xl border-2 border-neutral-700 bg-black p-4 sm:p-5 text-white shadow-2xl flex flex-col overflow-hidden font-mono">
         {/* Top Header */}
         <div className="flex items-center justify-between border-b-2 border-neutral-800 pb-3 mb-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -171,34 +177,73 @@ export function TripDetailsContainer({
           </div>
         </div>
 
-        {/* Summary Metrics Bar */}
-        <div className="grid grid-cols-3 gap-2 rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 sm:p-3 mb-3 text-center shrink-0">
-          <div>
+        {/* Complete Session Telemetry Grid (6 cards: 3x2) */}
+        <div className="grid grid-cols-3 gap-2 mb-3 shrink-0">
+          {/* 1. Distância Total */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
             <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
               DISTÂNCIA
             </div>
-            <div className="text-lg sm:text-2xl font-extrabold tabular-nums text-white">
-              {trip ? trip.totalDistance.toFixed(2) : '0.00'}{' '}
-              <span className="text-xs text-neutral-400">KM</span>
+            <div className="text-lg sm:text-2xl font-extrabold tabular-nums text-white mt-0.5">
+              {stats ? stats.totalDistanceKm.toFixed(2) : '0.00'}{' '}
+              <span className="text-[10px] sm:text-xs text-neutral-400">KM</span>
             </div>
           </div>
 
-          <div className="border-x border-neutral-800">
+          {/* 2. Velocidade Média */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
             <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
-              DURAÇÃO
+              VEL. MÉDIA
             </div>
-            <div className="text-lg sm:text-2xl font-extrabold tabular-nums text-white">
-              {durationMs > 0 ? formatDuration(durationMs) : '--:--'}
+            <div className="text-lg sm:text-2xl font-extrabold tabular-nums text-emerald-400 mt-0.5">
+              {stats ? stats.averageSpeedKmh.toFixed(1) : '0.0'}{' '}
+              <span className="text-[10px] sm:text-xs text-neutral-400">KM/H</span>
             </div>
           </div>
 
-          <div>
+          {/* 3. Velocidade Máxima */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
             <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
-              OTIMIZAÇÃO DP (ε={epsilonMeters}m)
+              VEL. MÁXIMA
             </div>
-            <div className="text-sm sm:text-lg font-extrabold tabular-nums text-emerald-400 mt-0.5">
-              {rawPointCount} &rarr; {simplifiedPointCount}{' '}
-              <span className="text-[10px] text-neutral-400">PTS</span>
+            <div className="text-lg sm:text-2xl font-extrabold tabular-nums text-white mt-0.5">
+              {stats ? stats.maxSpeedKmh.toFixed(1) : '0.0'}{' '}
+              <span className="text-[10px] sm:text-xs text-neutral-400">KM/H</span>
+            </div>
+          </div>
+
+          {/* 4. Tempo em Movimento (Pedal Ativo) */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
+            <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
+              TEMPO ATIVO
+            </div>
+            <div className="text-base sm:text-xl font-extrabold tabular-nums text-white mt-0.5">
+              {stats && stats.movingTimeMs > 0
+                ? formatDuration(stats.movingTimeMs)
+                : '--:--'}
+            </div>
+          </div>
+
+          {/* 5. Duração Total (Início ao Fim) */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
+            <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
+              DURAÇÃO TOTAL
+            </div>
+            <div className="text-base sm:text-xl font-extrabold tabular-nums text-neutral-300 mt-0.5">
+              {stats && stats.totalDurationMs > 0
+                ? formatDuration(stats.totalDurationMs)
+                : '--:--'}
+            </div>
+          </div>
+
+          {/* 6. Ganho de Elevação Acumulado */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center">
+            <div className="text-[10px] sm:text-xs text-neutral-400 uppercase font-bold">
+              ELEVAÇÃO (+)
+            </div>
+            <div className="text-base sm:text-xl font-extrabold tabular-nums text-white mt-0.5">
+              {stats ? `+${stats.elevationGainMeters}` : '+0'}{' '}
+              <span className="text-[10px] sm:text-xs text-neutral-400">M</span>
             </div>
           </div>
         </div>
@@ -250,11 +295,16 @@ export function TripDetailsContainer({
                 />
               </div>
 
-              {/* Douglas-Peucker Epsilon Fine-Tuning Bar */}
-              <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-xs shrink-0">
-                <span className="text-neutral-400 font-bold uppercase">
-                  Tolerância Douglas-Peucker:
-                </span>
+              {/* Douglas-Peucker Epsilon Fine-Tuning Bar + Point Compression Ratio */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-xs shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-400 font-bold uppercase">
+                    Simplificação DP:
+                  </span>
+                  <span className="text-emerald-400 font-extrabold tabular-nums">
+                    {rawPointCount} &rarr; {simplifiedPointCount} pts
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   {[5, 7, 10].map((eps) => (
                     <button
@@ -300,4 +350,3 @@ export function TripDetailsContainer({
     </div>
   )
 }
-

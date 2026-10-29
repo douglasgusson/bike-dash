@@ -13,6 +13,9 @@ export interface Trip {
   startTime: number // Epoch timestamp
   endTime: number | null
   totalDistance: number // Atualizado periodicamente ou ao final (em km)
+  elapsedTimeMs?: number // Tempo ativo de pedalada (descontando pausas/auto-pause)
+  averageSpeedKmh?: number // Velocidade média da sessão em km/h
+  maxSpeedKmh?: number // Velocidade máxima atingida em km/h
   isFinished: boolean
 }
 

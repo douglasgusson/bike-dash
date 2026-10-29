@@ -38,10 +38,19 @@ export function useTripLogger(): TripLoggerController {
     try {
       await flushTrackPointsBatch(snapshot)
 
-      const { currentTripId, distanceKm } = useTripStore.getState()
+      const {
+        currentTripId,
+        distanceKm,
+        elapsedTimeMs,
+        averageSpeedKmh,
+        maxSpeedKmh,
+      } = useTripStore.getState()
       if (currentTripId) {
         await updateTripMetadata(currentTripId, {
           totalDistance: distanceKm,
+          elapsedTimeMs,
+          averageSpeedKmh,
+          maxSpeedKmh,
         })
       }
     } catch (err) {
@@ -109,6 +118,9 @@ export function useTripLogger(): TripLoggerController {
       startTime: now,
       endTime: null,
       totalDistance: state.distanceKm,
+      elapsedTimeMs: state.elapsedTimeMs,
+      averageSpeedKmh: state.averageSpeedKmh,
+      maxSpeedKmh: state.maxSpeedKmh,
       isFinished: false,
     }
 
@@ -120,6 +132,9 @@ export function useTripLogger(): TripLoggerController {
     const state = useTripStore.getState()
     const activeTripId = state.currentTripId
     const finalDistanceKm = state.distanceKm
+    const finalElapsedMs = state.elapsedTimeMs
+    const finalAvgSpeedKmh = state.averageSpeedKmh
+    const finalMaxSpeedKmh = state.maxSpeedKmh
     const startTime = state.startTime ?? Date.now()
 
     // 1. Final flush of any remaining points in `pointBuffer`
@@ -130,6 +145,9 @@ export function useTripLogger(): TripLoggerController {
       const updated = await updateTripMetadata(activeTripId, {
         endTime: Date.now(),
         totalDistance: finalDistanceKm,
+        elapsedTimeMs: finalElapsedMs,
+        averageSpeedKmh: finalAvgSpeedKmh,
+        maxSpeedKmh: finalMaxSpeedKmh,
         isFinished: true,
       })
 
@@ -139,6 +157,9 @@ export function useTripLogger(): TripLoggerController {
           startTime,
           endTime: Date.now(),
           totalDistance: finalDistanceKm,
+          elapsedTimeMs: finalElapsedMs,
+          averageSpeedKmh: finalAvgSpeedKmh,
+          maxSpeedKmh: finalMaxSpeedKmh,
           isFinished: true,
         })
       }
