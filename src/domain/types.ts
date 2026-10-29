@@ -8,6 +8,23 @@ export type GpsSignalStatus =
 
 export type TripStatus = 'IDLE' | 'RUNNING' | 'PAUSED'
 
+export interface Trip {
+  id: string // UUID (ex: crypto.randomUUID()) ou timestamp de início
+  startTime: number // Epoch timestamp
+  endTime: number | null
+  totalDistance: number // Atualizado periodicamente ou ao final (em km)
+  isFinished: boolean
+}
+
+export interface TrackPoint {
+  tripId: string // Foreign key para agrupar na query
+  timestamp: number // Epoch (Primary Key composta ou Index)
+  lat: number
+  lng: number
+  alt: number | null
+  accuracy: number // Útil para debugging ou pós-processamento da rota
+}
+
 export interface GeoPoint {
   latitude: number
   longitude: number
@@ -38,6 +55,8 @@ export interface TripSettings {
 
 export interface TripState {
   status: TripStatus
+  currentTripId: string | null
+  lastCompletedTripId: string | null
   isAutoPaused: boolean
   startTime: number | null
   /** Active pedaling time in milliseconds */
@@ -52,8 +71,6 @@ export interface TripState {
   maxSpeedKmh: number
   /** Average active speed in km/h */
   averageSpeedKmh: number
-  /** Captured valid coordinates history */
-  coordinates: GeoPoint[]
   /** Last accepted GPS point for delta calculations */
   lastValidPoint: GeoPoint | null
   /** Current GPS status */

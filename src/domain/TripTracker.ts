@@ -5,15 +5,38 @@ import type {
   GeoPoint,
   GpsErrorInfo,
   GpsSignalStatus,
+  TrackPoint,
   TripSettings,
   TripState,
 } from './types'
 
+export type TrackPointEmitCallback = (
+  trackPoint: TrackPoint,
+  speedKmh: number,
+  totalDistanceKm: number,
+) => void
+
+const trackPointSubscribers = new Set<TrackPointEmitCallback>()
+
+export function onTrackPointValidated(cb: TrackPointEmitCallback): () => void {
+  trackPointSubscribers.add(cb)
+  return () => trackPointSubscribers.delete(cb)
+}
+
+function generateTripId(timestamp: number): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `trip-${timestamp}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export interface TripTrackerActions {
-  startTrip: () => void
+  startTrip: () => string
   pauseTrip: () => void
   resumeTrip: () => void
+  finishTrip: () => string | null
   resetTrip: () => void
+  clearLastCompletedTrip: () => void
   ingestGeoPoint: (point: GeoPoint) => void
   setGpsStatus: (status: GpsSignalStatus, error?: GpsErrorInfo | null) => void
   tickTimer: (deltaMs: number) => void
@@ -32,6 +55,8 @@ const DEFAULT_SETTINGS: TripSettings = {
 
 const INITIAL_TRIP_STATE: Omit<TripState, 'settings'> = {
   status: 'IDLE',
+  currentTripId: null,
+  lastCompletedTripId: null,
   isAutoPaused: false,
   startTime: null,
   elapsedTimeMs: 0,
@@ -40,15 +65,12 @@ const INITIAL_TRIP_STATE: Omit<TripState, 'settings'> = {
   rawSpeedKmh: 0,
   maxSpeedKmh: 0,
   averageSpeedKmh: 0,
-  coordinates: [],
   lastValidPoint: null,
   gpsStatus: 'IDLE',
   currentAccuracy: null,
   gpsError: null,
   isSimulating: false,
 }
-
-const MAX_STORED_COORDINATES = 1000
 
 export const useTripStore = create<TripStore>()(
   persist(
@@ -58,12 +80,19 @@ export const useTripStore = create<TripStore>()(
 
       startTrip: () => {
         const now = Date.now()
+        const existingTripId = get().currentTripId
+        const tripId = existingTripId ?? generateTripId(now)
+
         set({
           status: 'RUNNING',
+          currentTripId: tripId,
+          lastCompletedTripId: null,
           isAutoPaused: false,
           startTime: get().startTime ?? now,
           lastValidPoint: null,
         })
+
+        return tripId
       },
 
       pauseTrip: () => {
@@ -84,6 +113,19 @@ export const useTripStore = create<TripStore>()(
         })
       },
 
+      finishTrip: () => {
+        const { currentTripId, gpsStatus, currentAccuracy, isSimulating, settings } = get()
+        set({
+          ...INITIAL_TRIP_STATE,
+          lastCompletedTripId: currentTripId,
+          gpsStatus,
+          currentAccuracy,
+          isSimulating,
+          settings,
+        })
+        return currentTripId
+      },
+
       resetTrip: () => {
         const { gpsStatus, currentAccuracy, isSimulating, settings } = get()
         set({
@@ -93,6 +135,10 @@ export const useTripStore = create<TripStore>()(
           isSimulating,
           settings,
         })
+      },
+
+      clearLastCompletedTrip: () => {
+        set({ lastCompletedTripId: null })
       },
 
       setGpsStatus: (gpsStatus, gpsError = null) => {
@@ -119,7 +165,7 @@ export const useTripStore = create<TripStore>()(
 
       ingestGeoPoint: (point: GeoPoint) => {
         const state = get()
-        const { settings, lastValidPoint, currentSpeedKmh, status } = state
+        const { settings, lastValidPoint, currentSpeedKmh, status, currentTripId } = state
 
         // 1. Always record current reported accuracy
         const accuracy = point.accuracy
@@ -175,11 +221,6 @@ export const useTripStore = create<TripStore>()(
         const newAverageSpeedKmh =
           elapsedHours > 0.0005 ? newDistanceKm / elapsedHours : state.averageSpeedKmh
 
-        const updatedCoords =
-          state.coordinates.length >= MAX_STORED_COORDINATES
-            ? [...state.coordinates.slice(-MAX_STORED_COORDINATES + 1), point]
-            : [...state.coordinates, point]
-
         set({
           currentAccuracy: accuracy,
           gpsStatus: state.isSimulating ? 'SIMULATING' : 'CONNECTED',
@@ -190,8 +231,22 @@ export const useTripStore = create<TripStore>()(
           averageSpeedKmh: newAverageSpeedKmh,
           isAutoPaused: shouldAutoPause,
           lastValidPoint: point,
-          coordinates: updatedCoords,
         })
+
+        // Emit validated point to the Trip Logger buffer only when moving (speed > 1.0 km/h)
+        if (currentTripId && effectiveSpeedKmh > 1.0) {
+          const trackPoint: TrackPoint = {
+            tripId: currentTripId,
+            timestamp: point.timestamp,
+            lat: point.latitude,
+            lng: point.longitude,
+            alt: point.altitude,
+            accuracy: point.accuracy,
+          }
+          for (const cb of trackPointSubscribers) {
+            cb(trackPoint, effectiveSpeedKmh, newDistanceKm)
+          }
+        }
       },
 
       tickTimer: (deltaMs: number) => {
@@ -250,6 +305,7 @@ export const useTripStore = create<TripStore>()(
       }),
       partialize: (state) => ({
         status: state.status === 'RUNNING' ? 'PAUSED' : state.status,
+        currentTripId: state.currentTripId,
         startTime: state.startTime,
         elapsedTimeMs: state.elapsedTimeMs,
         distanceKm: state.distanceKm,

@@ -1,13 +1,18 @@
-import { Lock, LockOpen, Radio, SlidersHorizontal } from 'lucide-react'
+import { History, Lock, LockOpen, Radio, SlidersHorizontal } from 'lucide-react'
 import { useTripStore } from '../domain/TripTracker'
 import type { WakeLockController } from '../hooks/useWakeLock'
 
 interface StatusBarProps {
   wakeLock: WakeLockController
   onOpenSettings: () => void
+  onOpenHistory: () => void
 }
 
-export function StatusBar({ wakeLock, onOpenSettings }: StatusBarProps) {
+export function StatusBar({
+  wakeLock,
+  onOpenSettings,
+  onOpenHistory,
+}: StatusBarProps) {
   const gpsStatus = useTripStore((s) => s.gpsStatus)
   const currentAccuracy = useTripStore((s) => s.currentAccuracy)
   const tripStatus = useTripStore((s) => s.status)
@@ -109,6 +114,16 @@ export function StatusBar({ wakeLock, onOpenSettings }: StatusBarProps) {
           <span className="hidden xs:inline">
             {wakeLock.isActive ? 'TELA ATIVA' : 'TELA LIVRE'}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          aria-label="Histórico de Viagens e Exportação GPX"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 border-neutral-700 bg-black text-white hover:border-white font-mono text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors active:scale-95 cursor-pointer"
+        >
+          <History className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="hidden md:inline">ROTAS</span>
         </button>
 
         <button

@@ -4,13 +4,17 @@ import { MetricsGrid } from './components/MetricsGrid'
 import { SpeedDisplay } from './components/SpeedDisplay'
 import { StatusBar } from './components/StatusBar'
 import { TripControls } from './components/TripControls'
+import { TripHistoryModal } from './components/TripHistoryModal'
 import { useGeolocation } from './hooks/useGeolocation'
+import { useTripLogger } from './hooks/useTripLogger'
 import { useWakeLock } from './hooks/useWakeLock'
 
 export function App() {
   useGeolocation()
+  const tripLogger = useTripLogger()
   const wakeLock = useWakeLock(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 
   return (
     <div className="h-dvh w-dvw bg-black text-white flex flex-col overflow-hidden">
@@ -18,6 +22,7 @@ export function App() {
       <StatusBar
         wakeLock={wakeLock}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
       />
 
       {/* Responsive Portrait (Stem) & Landscape (Top Tube) Layout */}
@@ -30,7 +35,7 @@ export function App() {
         {/* 2x2 Session Metrics Grid + Glove-friendly Action Buttons */}
         <div className="flex flex-col landscape:w-1/2 landscape:flex-1 min-h-0 justify-end">
           <MetricsGrid />
-          <TripControls />
+          <TripControls tripLogger={tripLogger} />
         </div>
       </main>
 
@@ -38,6 +43,12 @@ export function App() {
       <CalibrationModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Trip History & GPX Export Modal */}
+      <TripHistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
       />
     </div>
   )
