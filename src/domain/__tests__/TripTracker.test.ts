@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { onTrackPointValidated, useTripStore } from '../TripTracker'
 import type { GeoPoint, TrackPoint } from '../types'
-import { buildGpxXml } from '../../services/GpxExporter'
+import { buildGpxXml, importGpxToDatabase } from '../../services/GpxExporter'
 import {
   clearMemoryTripDb,
   deleteTripCascade,
@@ -182,5 +182,15 @@ describe('TripTracker Domain Store & Trip Logger', () => {
     await deleteTripCascade(tripId)
     expect(await getAllTrips()).toHaveLength(0)
     expect(await getTrackPointsByTripId(tripId)).toHaveLength(0)
+
+    // Re-import the exported GPX XML string into IndexedDB
+    const imported = await importGpxToDatabase(gpxXml)
+    expect(imported.pointCount).toBe(2)
+    expect(imported.trip.totalDistance).toBeGreaterThan(0.1)
+
+    const tripsAfterImport = await getAllTrips()
+    expect(tripsAfterImport).toHaveLength(1)
+    const importedPoints = await getTrackPointsByTripId(imported.trip.id)
+    expect(importedPoints).toHaveLength(2)
   })
 })

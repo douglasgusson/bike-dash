@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { Download, History, Map, Trash2, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, Download, History, Map, Trash2, Upload, X } from 'lucide-react'
 import { formatDuration } from '../domain/math'
 import { useTripStore } from '../domain/TripTracker'
 import type { Trip } from '../domain/types'
-import { exportTripToGpxDownload } from '../services/GpxExporter'
+import { exportTripToGpxDownload, importGpxToDatabase } from '../services/GpxExporter'
 import { deleteTripCascade, getAllTrips } from '../services/TripDatabase'
 
 interface TripHistoryModalProps {
@@ -21,6 +21,13 @@ export function TripHistoryModal({
   const [loading, setLoading] = useState(false)
   const [exportingId, setExportingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importFeedback, setImportFeedback] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const lastCompletedTripId = useTripStore((s) => s.lastCompletedTripId)
   const clearLastCompletedTrip = useTripStore((s) => s.clearLastCompletedTrip)
@@ -39,6 +46,7 @@ export function TripHistoryModal({
     if (isOpen) {
       void loadTrips()
       setConfirmDeleteId(null)
+      setImportFeedback(null)
     }
   }, [isOpen])
 
@@ -67,6 +75,48 @@ export function TripHistoryModal({
     await loadTrips()
   }
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setIsImporting(true)
+    setImportFeedback(null)
+
+    try {
+      let importedCount = 0
+      let totalPoints = 0
+
+      for (const file of Array.from(files)) {
+        const text = await file.text()
+        const result = await importGpxToDatabase(text)
+        importedCount += 1
+        totalPoints += result.pointCount
+      }
+
+      await loadTrips()
+      setImportFeedback({
+        type: 'success',
+        message:
+          importedCount === 1
+            ? `Viagem importada com sucesso (${totalPoints} pontos GPS).`
+            : `${importedCount} viagens importadas (${totalPoints} pontos GPS).`,
+      })
+    } catch (err) {
+      setImportFeedback({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Falha ao ler o arquivo GPX. Verifique o formato.',
+      })
+    } finally {
+      setIsImporting(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
     <div
       role="dialog"
@@ -75,27 +125,74 @@ export function TripHistoryModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 select-none"
     >
       <div className="w-full max-w-lg rounded-2xl border-2 border-neutral-700 bg-black p-5 text-white shadow-2xl max-h-[92dvh] flex flex-col">
-        <div className="flex items-center justify-between border-b-2 border-neutral-800 pb-3 mb-4 shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between border-b-2 border-neutral-800 pb-3 mb-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <History className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div>
-              <h2 className="font-mono text-lg font-extrabold uppercase tracking-wider">
+            <div className="min-w-0">
+              <h2 className="font-mono text-base sm:text-lg font-extrabold uppercase tracking-wider truncate">
                 HISTÓRICO DE PEDAIS
               </h2>
-              <p className="text-xs text-neutral-400 font-mono">
+              <p className="text-xs text-neutral-400 font-mono truncate">
                 Rotas salvas offline no IndexedDB (GPX 1.1)
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar histórico"
-            className="p-2 rounded-full border-2 border-neutral-700 hover:border-white text-white cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Hidden file input for GPX import */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".gpx,application/gpx+xml,application/xml,text/xml"
+              multiple
+              onChange={(e) => void handleFileChange(e)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              disabled={isImporting}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 border-emerald-500/60 bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-400 font-mono text-xs font-extrabold uppercase tracking-wider transition-colors active:scale-95 cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+              <span>{isImporting ? 'LENDO...' : 'IMPORTAR GPX'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar histórico"
+              className="p-2 rounded-full border-2 border-neutral-700 hover:border-white text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Import status banner */}
+        {importFeedback && (
+          <div
+            className={`mb-3 px-3 py-2 rounded-xl border font-mono text-xs flex items-center justify-between gap-2 shrink-0 ${
+              importFeedback.type === 'success'
+                ? 'border-emerald-500/60 bg-emerald-950/40 text-emerald-300'
+                : 'border-red-500/60 bg-red-950/40 text-red-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {importFeedback.type === 'success' && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              )}
+              <span>{importFeedback.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImportFeedback(null)}
+              className="text-neutral-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-1 font-mono">
           {loading ? (
@@ -103,13 +200,24 @@ export function TripHistoryModal({
               Carregando viagens...
             </div>
           ) : trips.length === 0 ? (
-            <div className="py-10 text-center border border-dashed border-neutral-800 rounded-xl p-6">
-              <p className="text-neutral-300 font-bold text-sm uppercase">
-                Nenhuma viagem registrada
-              </p>
-              <p className="text-neutral-500 text-xs mt-1">
-                Inicie um pedal para gravar o trajeto GPS e exportar para o Strava ou Garmin.
-              </p>
+            <div className="py-10 text-center border border-dashed border-neutral-800 rounded-xl p-6 space-y-3">
+              <div>
+                <p className="text-neutral-300 font-bold text-sm uppercase">
+                  Nenhuma viagem registrada
+                </p>
+                <p className="text-neutral-500 text-xs mt-1">
+                  Inicie um pedal ou importe um arquivo .GPX gravado em outro dispositivo.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isImporting}
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                <Upload className="w-4 h-4 stroke-[2.5]" />
+                <span>SELECIONAR ARQUIVO .GPX</span>
+              </button>
             </div>
           ) : (
             trips.map((trip) => {
@@ -233,4 +341,3 @@ export function TripHistoryModal({
     </div>
   )
 }
-
