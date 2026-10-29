@@ -27,6 +27,16 @@ export default defineConfig({
             purpose: 'any maskable',
           },
         ],
+        file_handlers: [
+          {
+            action: '/',
+            accept: {
+              'application/gpx+xml': ['.gpx'],
+              'application/xml': ['.gpx'],
+              'text/xml': ['.gpx'],
+            },
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],

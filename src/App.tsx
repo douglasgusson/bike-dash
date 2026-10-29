@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { Upload } from 'lucide-react'
 import { CalibrationModal } from './components/CalibrationModal'
 import { MetricsGrid } from './components/MetricsGrid'
 import { SpeedDisplay } from './components/SpeedDisplay'
@@ -7,6 +8,7 @@ import { TripControls } from './components/TripControls'
 import { TripDetailsContainer } from './components/TripDetailsContainer'
 import { TripHistoryModal } from './components/TripHistoryModal'
 import { useGeolocation } from './hooks/useGeolocation'
+import { useGpxFileHandler } from './hooks/useGpxFileHandler'
 import { useTripLogger } from './hooks/useTripLogger'
 import { useWakeLock } from './hooks/useWakeLock'
 
@@ -25,10 +27,12 @@ export function App() {
     setSelectedTripIdForMap(tripId)
   }
 
-  const handleOpenMapDirect = (tripId: string) => {
-    setOpenedMapFromHistory(false)
+  const handleOpenMapDirect = useCallback((tripId: string) => {
+    setIsHistoryOpen(false)
+    setIsSettingsOpen(false)
+    setOpenedMapFromHistory(true)
     setSelectedTripIdForMap(tripId)
-  }
+  }, [])
 
   const handleBackToHistory = () => {
     setSelectedTripIdForMap(null)
@@ -36,8 +40,24 @@ export function App() {
     setIsHistoryOpen(true)
   }
 
+  // Register PWA File Handling API (`window.launchQueue`) & Drag-and-Drop GPX import
+  const { isDraggingOver } = useGpxFileHandler(handleOpenMapDirect)
+
   return (
-    <div className="h-dvh w-dvw bg-black text-white flex flex-col overflow-hidden">
+    <div className="relative h-dvh w-dvw bg-black text-white flex flex-col overflow-hidden">
+      {/* Drag & Drop GPX Overlay */}
+      {isDraggingOver && (
+        <div className="fixed inset-0 z-[60] bg-black/90 border-4 border-dashed border-emerald-500 rounded-2xl m-3 flex flex-col items-center justify-center gap-3 pointer-events-none font-mono">
+          <Upload className="w-14 h-14 text-emerald-400 animate-bounce" />
+          <div className="text-xl font-extrabold uppercase tracking-wider text-emerald-400">
+            SOLTE O ARQUIVO .GPX AQUI
+          </div>
+          <div className="text-xs text-neutral-300">
+            A rota será importada para o IndexedDB e aberta no mapa automaticamente
+          </div>
+        </div>
+      )}
+
       {/* Top Status & Hardware Controls Bar */}
       <StatusBar
         wakeLock={wakeLock}
@@ -75,7 +95,7 @@ export function App() {
         onSelectTripForMap={handleOpenMapFromHistory}
       />
 
-      {/* Post-Session Trip Viewer (Douglas-Peucker + Leaflet Dark Matter Map) */}
+      {/* Post-Session Trip Viewer (Douglas-Peucker + Mapbox/Leaflet Map) */}
       <TripDetailsContainer
         tripId={selectedTripIdForMap}
         onClose={() => {
