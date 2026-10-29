@@ -4,6 +4,7 @@ import { MetricsGrid } from './components/MetricsGrid'
 import { SpeedDisplay } from './components/SpeedDisplay'
 import { StatusBar } from './components/StatusBar'
 import { TripControls } from './components/TripControls'
+import { TripDetailsContainer } from './components/TripDetailsContainer'
 import { TripHistoryModal } from './components/TripHistoryModal'
 import { useGeolocation } from './hooks/useGeolocation'
 import { useTripLogger } from './hooks/useTripLogger'
@@ -15,6 +16,25 @@ export function App() {
   const wakeLock = useWakeLock(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [selectedTripIdForMap, setSelectedTripIdForMap] = useState<string | null>(null)
+  const [openedMapFromHistory, setOpenedMapFromHistory] = useState(false)
+
+  const handleOpenMapFromHistory = (tripId: string) => {
+    setIsHistoryOpen(false)
+    setOpenedMapFromHistory(true)
+    setSelectedTripIdForMap(tripId)
+  }
+
+  const handleOpenMapDirect = (tripId: string) => {
+    setOpenedMapFromHistory(false)
+    setSelectedTripIdForMap(tripId)
+  }
+
+  const handleBackToHistory = () => {
+    setSelectedTripIdForMap(null)
+    setOpenedMapFromHistory(false)
+    setIsHistoryOpen(true)
+  }
 
   return (
     <div className="h-dvh w-dvw bg-black text-white flex flex-col overflow-hidden">
@@ -35,7 +55,10 @@ export function App() {
         {/* 2x2 Session Metrics Grid + Glove-friendly Action Buttons */}
         <div className="flex flex-col landscape:w-1/2 landscape:flex-1 min-h-0 justify-end">
           <MetricsGrid />
-          <TripControls tripLogger={tripLogger} />
+          <TripControls
+            tripLogger={tripLogger}
+            onViewTripMap={handleOpenMapDirect}
+          />
         </div>
       </main>
 
@@ -49,6 +72,17 @@ export function App() {
       <TripHistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        onSelectTripForMap={handleOpenMapFromHistory}
+      />
+
+      {/* Post-Session Trip Viewer (Douglas-Peucker + Leaflet Dark Matter Map) */}
+      <TripDetailsContainer
+        tripId={selectedTripIdForMap}
+        onClose={() => {
+          setSelectedTripIdForMap(null)
+          setOpenedMapFromHistory(false)
+        }}
+        onBackToHistory={openedMapFromHistory ? handleBackToHistory : undefined}
       />
     </div>
   )

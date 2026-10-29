@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, History, Trash2, X } from 'lucide-react'
+import { Download, History, Map, Trash2, X } from 'lucide-react'
 import { formatDuration } from '../domain/math'
 import { useTripStore } from '../domain/TripTracker'
 import type { Trip } from '../domain/types'
@@ -9,9 +9,14 @@ import { deleteTripCascade, getAllTrips } from '../services/TripDatabase'
 interface TripHistoryModalProps {
   isOpen: boolean
   onClose: () => void
+  onSelectTripForMap: (tripId: string) => void
 }
 
-export function TripHistoryModal({ isOpen, onClose }: TripHistoryModalProps) {
+export function TripHistoryModal({
+  isOpen,
+  onClose,
+  onSelectTripForMap,
+}: TripHistoryModalProps) {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(false)
   const [exportingId, setExportingId] = useState<string | null>(null)
@@ -156,7 +161,16 @@ export function TripHistoryModal({ isOpen, onClose }: TripHistoryModalProps) {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => onSelectTripForMap(trip.id)}
+                      className="h-10 rounded-xl bg-white hover:bg-neutral-200 active:scale-[0.99] text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Map className="w-4 h-4 stroke-[2.5]" />
+                      <span>MAPA</span>
+                    </button>
+
                     <button
                       type="button"
                       disabled={exportingId === trip.id}
@@ -165,7 +179,7 @@ export function TripHistoryModal({ isOpen, onClose }: TripHistoryModalProps) {
                     >
                       <Download className="w-4 h-4 stroke-[2.5]" />
                       <span>
-                        {exportingId === trip.id ? 'GERANDO...' : 'EXPORTAR GPX'}
+                        {exportingId === trip.id ? 'GERANDO...' : 'GPX'}
                       </span>
                     </button>
 
@@ -179,7 +193,7 @@ export function TripHistoryModal({ isOpen, onClose }: TripHistoryModalProps) {
                       }`}
                     >
                       <Trash2 className="w-4 h-4" />
-                      <span>{isConfirming ? 'CONFIRMAR?' : 'DELETAR'}</span>
+                      <span>{isConfirming ? 'OK?' : 'APAGAR'}</span>
                     </button>
                   </div>
                 </div>

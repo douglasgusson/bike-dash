@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, Flag, Pause, Play, Trash2, X } from 'lucide-react'
+import { Download, Flag, Map, Pause, Play, Trash2, X } from 'lucide-react'
 import { useTripStore } from '../domain/TripTracker'
 import type { TripLoggerController } from '../hooks/useTripLogger'
 import { exportTripToGpxDownload } from '../services/GpxExporter'
@@ -7,9 +7,10 @@ import { deleteTripCascade } from '../services/TripDatabase'
 
 interface TripControlsProps {
   tripLogger: TripLoggerController
+  onViewTripMap: (tripId: string) => void
 }
 
-export function TripControls({ tripLogger }: TripControlsProps) {
+export function TripControls({ tripLogger, onViewTripMap }: TripControlsProps) {
   const status = useTripStore((s) => s.status)
   const lastCompletedTripId = useTripStore((s) => s.lastCompletedTripId)
   const pauseTrip = useTripStore((s) => s.pauseTrip)
@@ -89,21 +90,30 @@ export function TripControls({ tripLogger }: TripControlsProps) {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => onViewTripMap(lastCompletedTripId)}
+              className="h-12 rounded-xl bg-white hover:bg-neutral-200 active:scale-[0.99] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Map className="w-4 h-4 stroke-[2.5]" />
+              <span>VER MAPA</span>
+            </button>
+
             <button
               type="button"
               disabled={isExporting}
               onClick={() => void handleExportLastTrip()}
-              className="h-12 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+              className="h-12 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Download className="w-4 h-4 stroke-[2.5]" />
-              <span>{isExporting ? 'EXPORTANDO...' : 'EXPORTAR ROTA (GPX)'}</span>
+              <span>{isExporting ? 'GERANDO...' : 'EXPORTAR GPX'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => void handleDiscardLastTrip()}
-              className={`h-12 rounded-xl border-2 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+              className={`h-12 rounded-xl border-2 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                 confirmDiscardFinished
                   ? 'border-red-400 bg-red-600 text-white animate-pulse'
                   : 'border-neutral-700 bg-black text-neutral-300 hover:border-red-500 hover:text-red-400'

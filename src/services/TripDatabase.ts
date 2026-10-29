@@ -16,6 +16,7 @@ export interface BikeDashDBSchema extends DBSchema {
     key: [string, number]
     value: TrackPoint
     indexes: {
+      'by-trip': string
       'by-tripId': string
       'by-tripId-timestamp': [string, number]
     }
@@ -32,8 +33,8 @@ function hasIndexedDB(): boolean {
 
 export function getBikeDashDB(): Promise<IDBPDatabase<BikeDashDBSchema>> {
   if (!dbPromise) {
-    dbPromise = openDB<BikeDashDBSchema>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+    dbPromise = openDB<BikeDashDBSchema>(DB_NAME, 2, {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         if (!db.objectStoreNames.contains('trips')) {
           const tripStore = db.createObjectStore('trips', { keyPath: 'id' })
           tripStore.createIndex('by-startTime', 'startTime')
@@ -43,8 +44,14 @@ export function getBikeDashDB(): Promise<IDBPDatabase<BikeDashDBSchema>> {
           const pointStore = db.createObjectStore('trackpoints', {
             keyPath: ['tripId', 'timestamp'],
           })
+          pointStore.createIndex('by-trip', 'tripId')
           pointStore.createIndex('by-tripId', 'tripId')
           pointStore.createIndex('by-tripId-timestamp', ['tripId', 'timestamp'])
+        } else if (oldVersion < 2) {
+          const pointStore = transaction.objectStore('trackpoints')
+          if (!pointStore.indexNames.contains('by-trip')) {
+            pointStore.createIndex('by-trip', 'tripId')
+          }
         }
       },
     })
@@ -147,7 +154,8 @@ export async function getTripById(tripId: string): Promise<Trip | undefined> {
 }
 
 /**
- * Queries all TrackPoints belonging to `tripId`, ordered chronologically by `timestamp`.
+ * Queries all TrackPoints belonging to `tripId` via the `by-trip` index,
+ * ordered chronologically by `timestamp`.
  */
 export async function getTrackPointsByTripId(tripId: string): Promise<TrackPoint[]> {
   if (!hasIndexedDB()) {
@@ -156,8 +164,7 @@ export async function getTrackPointsByTripId(tripId: string): Promise<TrackPoint
   }
 
   const db = await getBikeDashDB()
-  const range = IDBKeyRange.bound([tripId, 0], [tripId, Number.MAX_SAFE_INTEGER])
-  const points = await db.getAllFromIndex('trackpoints', 'by-tripId-timestamp', range)
+  const points = await db.getAllFromIndex('trackpoints', 'by-trip', tripId)
   return points.sort((a, b) => a.timestamp - b.timestamp)
 }
 
